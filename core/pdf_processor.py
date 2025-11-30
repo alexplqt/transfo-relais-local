@@ -1,10 +1,9 @@
 """
-Traitement des fichiers PDF avec Camelot
+Traitement des fichiers PDF avec Tabula
 """
 import fitz  # PyMuPDF
 import pandas as pd
-import camelot
-import streamlit as st
+import tabula as tb
 from .config import Config
 
 class PDFProcessor:
@@ -15,37 +14,28 @@ class PDFProcessor:
     
     def extract_tables_from_pdf(self, pdf_path):
         """
-        Extrait les tableaux qui ont 12 colonnes (structure des articles)
+        Extrait les tableaux d'un fichier PDF
         """
-        # Extraction de tous les tableaux avec Camelot
-        tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
-        
-        # Liste pour stocker les tableaux avec 12 colonnes
-        df_list = []
-        
-        # Récupérer le nombre de pages
+        # Ouverture du PDF pour connaître le nombre de pages
         pdf_document = fitz.open(pdf_path)
-        num_pages = pdf_document.page_count
+        numPages = pdf_document.page_count
         pdf_document.close()
         
-        st.info(f"📄 PDF de {num_pages} pages - {len(tables)} tableaux détectés")
+        # Liste pour stocker les DataFrames des deuxièmes tableaux
+        df_list = []
         
-        # Pour chaque tableau, vérifier s'il a 12 colonnes
-        for i, table in enumerate(tables):
-            nb_colonnes = table.shape[1]  # Nombre de colonnes
-            st.write(f"Tableau {i+1} (page {table.page}) : {nb_colonnes} colonnes")
+        # Extraction des tableaux avec tabula
+        for page_num in range(numPages):
+            # Extraire les tableaux pour chaque page
+            tables = tb.read_pdf(pdf_path, pages=page_num + 1, multiple_tables=True, encoding='ISO-8859-1')
             
-            if nb_colonnes == 12:
-                df_list.append(table.df)
-                st.success(f"✅ Tableau {i+1} sélectionné (12 colonnes)")
-            else:
-                st.warning(f"❌ Tableau {i+1} ignoré ({nb_colonnes} colonnes)")
+            # Vérifier si la page contient au moins deux tableaux
+            if len(tables) >= 2:
+                # Ajouter le deuxième tableau de la page à la liste
+                df_list.append(pd.DataFrame(tables[1]))
         
         if not df_list:
-            raise ValueError(f"Aucun tableau avec 12 colonnes trouvé. Tableaux détectés: {[table.shape[1] for table in tables]}")
+            raise ValueError("Aucun deuxième tableau trouvé dans le PDF")
         
-        # Concaténer tous les DataFrames
-        final_df = pd.concat(df_list, ignore_index=True)
-        st.success(f"🎯 {len(final_df)} lignes extraites de {len(df_list)} tableaux")
-        
-        return final_df
+        # Concaténer tous les DataFrames de la liste en un seul DataFrame
+        return pd.concat(df_list, ignore_index=True)
