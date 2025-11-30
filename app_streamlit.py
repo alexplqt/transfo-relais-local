@@ -4,10 +4,14 @@
 # =============================================================================
 # # Liste des commandes pour mettre à jour sur github les modifications : 
 # =============================================================================
-# git status          # Voir ce qui est modifié
+# git status          # Voir ce qui est modifié (facultatif)
 # git add .           # Ajouter tous les fichiers modifiés
 # git commit -m "message"  # Sauvegarder en local
 # git push origin main      # Envoyer sur GitHub
+
+# =============================================================================
+# Pour récupérer les modifs qui ont été faites sur github
+# =============================================================================
 # git pull origin main      # Récupérer les modifs de GitHub
 
 
@@ -93,7 +97,9 @@ def main_processing(pdf_file, csv_file, ref_commande, id_fourni):
         return df_processed, df_unlinked, df_import, pdf_file.name[:-4]
     
     except Exception as e:
+        import traceback
         st.error(f"Erreur lors du traitement : {str(e)}")
+        st.code(traceback.format_exc())  # Montre les détails de l'erreur
         return None, None, None, None
     
     finally:
