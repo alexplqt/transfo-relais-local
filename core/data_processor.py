@@ -87,6 +87,7 @@ class DataProcessor:
         art = pd.read_csv(articles_csv)
         
         # Nettoyage des articles
+        art.loc[art['Article/ID'].isna(),'Article/ID'] = art['ID Externe']
         art = art[~art['Article/ID'].isna()]
         art = art[~art['Fournisseurs/Référence Fournisseur'].isna()]
         art = art.drop_duplicates(subset='Fournisseurs/Référence Fournisseur', keep='first')
