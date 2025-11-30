@@ -1,0 +1,25 @@
+# Fichiers Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environnements virtuels
+.env
+.venv
+env/
+venv/
+
+# Fichiers de données temporaires
+*.pdf
+*.csv
+*.xlsx
+*.zip
+temp.pdf
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
