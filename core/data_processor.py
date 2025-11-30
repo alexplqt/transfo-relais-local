@@ -85,6 +85,7 @@ class DataProcessor:
         Returns:
             tuple: (df_merged, df_unlinked_rl, df_unlinked_od) - Données fusionnées et articles non liés
         """
+        st.info("🔄 UTILISATION DE LA NOUVELLE VERSION AVEC 3 FICHIERS")
         # Import des fichiers
         art = pd.read_csv(articles_csv)
         crpd = pd.read_excel(correspondance_excel)
