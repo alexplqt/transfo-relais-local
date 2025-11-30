@@ -3,6 +3,7 @@ Traitement et transformation des données
 """
 import pandas as pd
 import datetime
+import streamlit as st
 from .config import Config
 
 class DataProcessor:
@@ -72,45 +73,59 @@ class DataProcessor:
         df.loc[df['QTE'] != df['QTE 2'], 'QTE'] = df['QTE 2']
         return df.drop('QTE 2', axis=1)
     
-    def merge_with_articles(self, df, articles_csv):
+    def merge_with_articles(self, df, articles_csv, correspondance_excel):
         """
-        Fusionne les données avec le fichier des articles
+        Fusionne les données avec le fichier des articles et de correspondance
         
         Args:
             df (pd.DataFrame): DataFrame des commandes
             articles_csv: Fichier CSV des articles (file object ou path)
+            correspondance_excel: Fichier Excel de correspondance (file object ou path)
             
         Returns:
-            tuple: (df_merged, df_unlinked) - Données fusionnées et articles non liés
+            tuple: (df_merged, df_unlinked_rl, df_unlinked_od) - Données fusionnées et articles non liés
         """
-        # Import du fichier articles
+        # Import des fichiers
         art = pd.read_csv(articles_csv)
+        crpd = pd.read_excel(correspondance_excel)
         
-        # Nettoyage des articles
-        art.loc[art['Article/ID'].isna(),'Article/ID'] = art['ID Externe']
+        # Nettoyage des données (comme dans votre script)
+        art.loc[art['Article/ID'].isna(), 'Article/ID'] = art['ID Externe']
         art = art[~art['Article/ID'].isna()]
-        art = art[~art['Fournisseurs/Référence Fournisseur'].isna()]
-        art = art.drop_duplicates(subset='Fournisseurs/Référence Fournisseur', keep='first')
+        crpd = crpd.drop_duplicates(subset='Référence', keep='first')
+        crpd['Référence'] = crpd['Référence'].astype('string')
         
-        # Colonnes à conserver pour le merge
-        art_columns = [
-            'Article/ID', 'Fournisseurs/Référence Fournisseur',
-            'Fournisseurs/Unité de mesure/Nom affiché', 'Taxes fournisseur/ID'
-        ]
+        st.info(f"📊 Fichier correspondance : {len(crpd)} références")
+        st.info(f"📊 Fichier articles ODOO : {len(art)} articles")
         
-        # Merge avec les articles
+        # Premier merge avec la correspondance
         df_merged = df.merge(
-            art[art_columns],
+            crpd[['Référence', 'Nom ODOO']],
             how='left',
             left_on='REF.',
-            right_on='Fournisseurs/Référence Fournisseur',
+            right_on='Référence',
+        )
+        
+        # Deuxième merge avec les articles ODOO
+        df_merged = df_merged.merge(
+            art[['Article/ID', 'Nom', 'Fournisseurs/Unité de mesure/Nom affiché', 'Taxes fournisseur/ID']],
+            how='left',
+            left_on='Nom ODOO',
+            right_on='Nom',
         )
         
         # Articles non liés
-        df_unlinked = df_merged[df_merged['Article/ID'].isna()]
-        df_merged = df_merged[~df_merged['Article/ID'].isna()]
+        art_non_liés_rl = df_merged[df_merged['Nom ODOO'].isna()]  # Non trouvés dans Correspondance
+        art_non_liés_od = df_merged[(df_merged['Article/ID'].isna()) & (~df_merged['Nom ODOO'].isna())]  # Trouvés mais pas dans ODOO
+        df_processed = df_merged[~df_merged['Nom ODOO'].isna()]
         
-        return df_merged, df_unlinked
+        st.success(f"✅ Articles traités : {len(df_processed)}")
+        if not art_non_liés_rl.empty:
+            st.warning(f"⚠️ Articles non liés RL : {len(art_non_liés_rl)}")
+        if not art_non_liés_od.empty:
+            st.warning(f"⚠️ Articles non liés ODOO : {len(art_non_liés_od)}")
+        
+        return df_processed, art_non_liés_rl, art_non_liés_od
     
     def prepare_import_file(self, df, ref_commande, id_fourni):
         """

@@ -11,13 +11,14 @@ class FileExporter:
     def __init__(self):
         self.config = Config()
     
-    def export_to_excel(self, df_processed, df_unlinked):
+    def export_to_excel(self, df_processed, df_unlinked_rl, df_unlinked_od):
         """
-        Exporte les données vers un fichier Excel en mémoire
+        Exporte les données vers un fichier Excel en mémoire avec 3 onglets
         
         Args:
             df_processed (pd.DataFrame): Commandes traitées
-            df_unlinked (pd.DataFrame): Articles non liés
+            df_unlinked_rl (pd.DataFrame): Articles non liés RL
+            df_unlinked_od (pd.DataFrame): Articles non liés ODOO
             
         Returns:
             BytesIO: Buffer contenant le fichier Excel
@@ -26,7 +27,8 @@ class FileExporter:
         
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df_processed.to_excel(writer, sheet_name='commandes traitée', index=False)
-            df_unlinked.to_excel(writer, sheet_name='articles non liés', index=False)
+            df_unlinked_rl.to_excel(writer, sheet_name='articles non liés (RL)', index=False)
+            df_unlinked_od.to_excel(writer, sheet_name='articles non liés (ODOO)', index=False)
         
         excel_buffer.seek(0)
         return excel_buffer

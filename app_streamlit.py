@@ -49,7 +49,8 @@ config = Config()
 # =============================================================================
 st.title("Transformer une facture Relais Local en commande ODOO")
 st.markdown("""Cette application permet de convertir une facture relais local au format pdf en un fichier de commande à importer sur ODOO.
-            \nLe fichier "product.template.csv"" doit être téléchargé à partir d'ODOO, module Inventaire -> Données de base -> Articles, avec l'export "CGS - Import commandes RL".
+            \nLe fichier "product.template.csv" doit être téléchargé à partir d'ODOO, module Inventaire -> Données de base -> Articles, avec l'export "CGS - Import commandes RL".
+            \nLe fichier "Correspondance.xlsx" doit contenir la correspondance entre les références RL et les noms d'articles ODOO.
             \nLe paramètre "Référence commande" ci-contre doit être renseigné, c'est la référence commande qui sera retenue par ODOO. """)
 
 # Paramètres
@@ -59,7 +60,7 @@ id_fourni = st.sidebar.text_input("ID Fournisseur", value=config.ID_FOURNI_DEFAU
 
 # Upload des fichiers
 st.header("1. Import des fichiers")
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     pdf_file = st.file_uploader("Facture au format PDF", type=["pdf"])
@@ -67,10 +68,13 @@ with col1:
 with col2:
     csv_file = st.file_uploader('Fichier "product.template.csv"', type=["csv"])
 
+with col3:
+    excel_file = st.file_uploader('Fichier "Correspondance.xlsx"', type=["xlsx"])
+
 # =============================================================================
 # Traitement principal
 # =============================================================================
-def main_processing(pdf_file, csv_file, ref_commande, id_fourni):
+def main_processing(pdf_file, csv_file, excel_file, ref_commande, id_fourni):
     """Fonction principale de traitement"""
     temp_pdf_path = None
     
@@ -85,7 +89,7 @@ def main_processing(pdf_file, csv_file, ref_commande, id_fourni):
                 st.success("✅ Extraction PDF terminée")
             except Exception as e:
                 st.error(f"❌ Échec de l'extraction PDF: {str(e)}")
-                return None, None, None, None
+                return None, None, None, None, None
                 
         # Nettoyage des données
         with st.spinner("Nettoyage des données..."):
@@ -93,19 +97,19 @@ def main_processing(pdf_file, csv_file, ref_commande, id_fourni):
         
         # Fusion avec les articles
         with st.spinner("Fusion avec les articles..."):
-            df_processed, df_unlinked = data_processor.merge_with_articles(df_clean, csv_file)
+            df_processed, df_unlinked_rl, df_unlinked_od = data_processor.merge_with_articles(df_clean, csv_file, excel_file)
         
         # Préparation du fichier d'import
         with st.spinner("Préparation du fichier d'import..."):
             df_import = data_processor.prepare_import_file(df_processed, ref_commande, id_fourni)
         
-        return df_processed, df_unlinked, df_import, pdf_file.name[:-4]
+        return df_processed, df_unlinked_rl, df_unlinked_od, df_import, pdf_file.name[:-4]
     
     except Exception as e:
         import traceback
         st.error(f"Erreur lors du traitement : {str(e)}")
         st.code(traceback.format_exc())  # Montre les détails de l'erreur
-        return None, None, None, None
+        return None, None, None, None, None
     
     finally:
         # Nettoyage du fichier temporaire
@@ -114,9 +118,9 @@ def main_processing(pdf_file, csv_file, ref_commande, id_fourni):
 
 # Bouton de traitement
 if st.button("Traiter les fichiers", type="primary"):
-    if pdf_file is not None and csv_file is not None:
-        df_processed, df_unlinked, df_import, pdf_name = main_processing(
-            pdf_file, csv_file, ref_commande, id_fourni
+    if pdf_file is not None and csv_file is not None and excel_file is not None:
+        df_processed, df_unlinked_rl, df_unlinked_od, df_import, pdf_name = main_processing(
+            pdf_file, csv_file, excel_file, ref_commande, id_fourni
         )
         
         if df_processed is not None:
@@ -124,7 +128,7 @@ if st.button("Traiter les fichiers", type="primary"):
             
             # Affichage des résultats
             st.header("2. Résultats")
-            tab1, tab2, tab3 = st.tabs(["Commandes traitées", "Articles non liés", "Fichier à importer"])
+            tab1, tab2, tab3, tab4 = st.tabs(["Commandes traitées", "Articles non liés (RL)", "Articles non liés (ODOO)", "Fichier à importer"])
             
             with tab1:
                 st.subheader("Commandes traitées")
@@ -132,14 +136,22 @@ if st.button("Traiter les fichiers", type="primary"):
                 st.write(f"Nombre d'articles traités : {len(df_processed)}")
             
             with tab2:
-                st.subheader("Articles non liés")
-                if not df_unlinked.empty:
-                    st.dataframe(df_unlinked)
-                    st.write(f"Nombre d'articles non liés : {len(df_unlinked)}")
+                st.subheader("Articles non liés (RL)")
+                if not df_unlinked_rl.empty:
+                    st.dataframe(df_unlinked_rl)
+                    st.write(f"Nombre d'articles non liés RL : {len(df_unlinked_rl)}")
                 else:
-                    st.success("Aucun article non lié !")
+                    st.success("Aucun article non lié RL !")
             
             with tab3:
+                st.subheader("Articles non liés (ODOO)")
+                if not df_unlinked_od.empty:
+                    st.dataframe(df_unlinked_od)
+                    st.write(f"Nombre d'articles non liés ODOO : {len(df_unlinked_od)}")
+                else:
+                    st.success("Aucun article non lié ODOO !")
+            
+            with tab4:
                 st.subheader("Fichier à importer")
                 st.dataframe(df_import)
             
@@ -147,7 +159,7 @@ if st.button("Traiter les fichiers", type="primary"):
             st.header("3. Téléchargement des fichiers")
             
             # Préparer les buffers pour les fichiers
-            excel_buffer = file_exporter.export_to_excel(df_processed, df_unlinked)
+            excel_buffer = file_exporter.export_to_excel(df_processed, df_unlinked_rl, df_unlinked_od)
             csv_buffer = file_exporter.export_to_csv(df_import)
             
             col1, col2, col3 = st.columns(3)
@@ -193,6 +205,6 @@ if st.button("Traiter les fichiers", type="primary"):
                 )
     
     else:
-        st.warning("Veuillez importer les deux fichiers (PDF et CSV) avant de lancer le traitement.")
+        st.warning("Veuillez importer les trois fichiers (PDF, CSV et Excel) avant de lancer le traitement.")
 
 warnings.filterwarnings('always')
