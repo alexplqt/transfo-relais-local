@@ -80,8 +80,13 @@ def main_processing(pdf_file, csv_file, ref_commande, id_fourni):
         
         # Extraction des tableaux du PDF
         with st.spinner("Extraction des tableaux du PDF..."):
-            df_raw = pdf_processor.extract_tables_from_pdf(temp_pdf_path)
-        
+            try:
+                df_raw = pdf_processor.extract_tables_from_pdf(temp_pdf_path)
+                st.success("✅ Extraction PDF terminée")
+            except Exception as e:
+                st.error(f"❌ Échec de l'extraction PDF: {str(e)}")
+                return None, None, None, None
+                
         # Nettoyage des données
         with st.spinner("Nettoyage des données..."):
             df_clean = data_processor.clean_dataframe(df_raw)
