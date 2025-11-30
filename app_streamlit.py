@@ -33,7 +33,7 @@ config = Config()
 # =============================================================================
 # Interface utilisateur
 # =============================================================================
-st.title("Transformation facture Relais Local en commande")
+st.title("Transformer une facture Relais Local en commande ODOO")
 st.markdown("""Cette application permet de convertir une facture relais local au format pdf en un fichier de commande à importer sur ODOO.
             \nLe fichier "product.template.csv"" doit être téléchargé à partir d'ODOO, module Inventaire -> Données de base -> Articles, avec l'export "CGS - Import commandes RL".
             \nLe paramètre "Référence commande" ci-contre doit être renseigné, c'est la référence commande qui sera retenue par ODOO. """)
