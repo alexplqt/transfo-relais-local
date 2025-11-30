@@ -1,6 +1,16 @@
-"""
-Application Streamlit principale
-"""
+# Pour lancer le script en local, il faut lancer dans la console anaconda : streamlit run app_streamlit.py
+
+
+# =============================================================================
+# # Liste des commandes pour mettre à jour sur github les modifications : 
+# =============================================================================
+# git status          # Voir ce qui est modifié
+# git add .           # Ajouter tous les fichiers modifiés
+# git commit -m "message"  # Sauvegarder en local
+# git push origin main      # Envoyer sur GitHub
+# git pull origin main      # Récupérer les modifs de GitHub
+
+
 import streamlit as st
 import warnings
 

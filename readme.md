@@ -1,4 +1,4 @@
-# Transformation facture Relais Local en commande ODOO
+# Transformer une facture Relais Local en commande ODOO
 
 Application Streamlit pour convertir une facture Relais Local (PDF) en fichier de commande prêt à importer sur ODOO.
 
