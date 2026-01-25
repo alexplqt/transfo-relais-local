@@ -74,30 +74,47 @@ class DataProcessor:
         df.loc[df['QTE'] != df['QTE 2'], 'QTE'] = df['QTE 2']
         return df.drop('QTE 2', axis=1)
     
-    def merge_with_articles(self, df, articles_csv, correspondance_excel):
+    def merge_with_articles(self, df, articles_data, correspondance_excel):
         """
-        Fusionne les données avec le fichier des articles et de correspondance
+        Fusionne les données avec les articles et la correspondance
         
         Args:
             df (pd.DataFrame): DataFrame des commandes
-            articles_csv: Fichier CSV des articles (file object ou path)
+            articles_data: DataFrame ou fichier CSV des articles
             correspondance_excel: Fichier Excel de correspondance (file object ou path)
             
         Returns:
             tuple: (df_merged, df_unlinked_rl, df_unlinked_od) - Données fusionnées et articles non liés
         """
-        # Import des fichiers
-        art = pd.read_csv(articles_csv)
+        # Gestion des articles : soit un DataFrame (venant d'Odoo), soit un CSV
+        if isinstance(articles_data, pd.DataFrame):
+            art = articles_data.copy()
+        else:
+            art = pd.read_csv(articles_data)
+        
+        # Import du fichier de correspondance
         crpd = pd.read_excel(correspondance_excel)
         
-        # Nettoyage des données (comme dans votre script)
-        art.loc[art['Article/ID'].isna(), 'Article/ID'] = art['ID Externe']
+        # Nettoyage des données articles
+        # Pour les données venant d'Odoo, on utilise déjà l'ID externe
+        if 'Article/ID' not in art.columns and 'ID Externe' in art.columns:
+            art['Article/ID'] = art['ID Externe']
+        elif 'Article/ID' not in art.columns:
+            # Si aucune des deux colonnes n'existe, on essaie de la créer
+            art['Article/ID'] = None
+        
+        # Remplir les valeurs manquantes d'Article/ID avec ID Externe si disponible
+        if 'ID Externe' in art.columns:
+            art.loc[art['Article/ID'].isna(), 'Article/ID'] = art['ID Externe']
+        
         art = art[~art['Article/ID'].isna()]
+        
+        # Nettoyage de la correspondance
         crpd = crpd.drop_duplicates(subset='Référence', keep='first')
         crpd['Référence'] = crpd['Référence'].astype('string')
         
         st.info(f"📊 Fichier correspondance : {len(crpd)} références")
-        st.info(f"📊 Fichier articles ODOO : {len(art)} articles")
+        st.info(f"📊 Articles disponibles : {len(art)} articles")
         
         # Premier merge avec la correspondance
         df_merged = df.merge(
@@ -117,8 +134,8 @@ class DataProcessor:
         
         # Articles non liés
         art_non_liés_rl = df_merged[df_merged['Nom ODOO'].isna()]  # Non trouvés dans Correspondance
-        art_non_liés_od = df_merged[(df_merged['Article/ID'].isna()) & (~df_merged['Nom ODOO'].isna())]  # Trouvés mais pas dans ODOO
-        df_processed = df_merged[~df_merged['Nom ODOO'].isna()]
+        art_non_liés_od = df_merged[(df_merged['Article/ID'].isna()) & (~df_merged['Nom ODOO'].isna())]  # Trouvés dans correspondance mais pas dans ODOO
+        df_processed = df_merged[~df_merged['Article/ID'].isna()]  # Uniquement ceux complètement traités
         
         st.success(f"✅ Articles traités : {len(df_processed)}")
         if not art_non_liés_rl.empty:

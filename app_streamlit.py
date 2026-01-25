@@ -17,9 +17,10 @@
 
 import streamlit as st
 import warnings
+import pandas as pd
 
 # Import simplifié grâce aux __init__.py
-from core import PDFProcessor, DataProcessor, FileExporter, Config
+from core import PDFProcessor, DataProcessor, FileExporter, OdooConnector, Config
 from utils import save_uploaded_file, cleanup_temp_file
 
 warnings.filterwarnings('ignore')
@@ -39,17 +40,26 @@ st.set_page_config(
 @st.cache_resource
 def get_processors():
     """Initialise et cache les processeurs"""
-    return PDFProcessor(), DataProcessor(), FileExporter()
+    return PDFProcessor(), DataProcessor(), FileExporter(), OdooConnector()
 
-pdf_processor, data_processor, file_exporter = get_processors()
+pdf_processor, data_processor, file_exporter, odoo_connector = get_processors()
 config = Config()
+
+# =============================================================================
+# Gestion de la connexion Odoo et cache des données
+# =============================================================================
+@st.cache_data(ttl=3600)  # Cache pendant 1 heure
+def get_odoo_articles(_odoo_connector, url, port, database, username, password):
+    """Récupère et cache les articles depuis Odoo"""
+    if _odoo_connector.connect(url, port, database, username, password):
+        return _odoo_connector.get_product_variants()
+    return None
 
 # =============================================================================
 # Interface utilisateur
 # =============================================================================
 st.title("Transformer une facture Relais Local en commande ODOO")
 st.markdown("""Cette application permet de convertir une facture relais local au format pdf en un fichier de commande à importer sur ODOO.
-            \nLe fichier "product.template.csv" doit être téléchargé à partir d'ODOO, module Inventaire -> Données de base -> Articles, avec l'export "CGS - Import commandes RL".
             \nLe fichier "Correspondance.xlsx" doit contenir la correspondance entre les références RL et les noms d'articles ODOO.
             \nLe paramètre "Référence commande" ci-contre doit être renseigné, c'est la référence commande qui sera retenue par ODOO. """)
 
@@ -58,23 +68,108 @@ st.sidebar.header("Paramètres")
 ref_commande = st.sidebar.text_input("Référence commande", value=config.REF_COMMANDE_DEFAULT)
 id_fourni = st.sidebar.text_input("ID Fournisseur", value=config.ID_FOURNI_DEFAULT)
 
-# Upload des fichiers
-st.header("1. Import des fichiers")
-col1, col2, col3 = st.columns(3)
+# =============================================================================
+# Section : Choix de la source des articles
+# =============================================================================
+st.header("1. Source des articles ODOO")
+
+source_mode = st.radio(
+    "Choisissez votre méthode :",
+    ["Connexion Odoo", "Upload fichier CSV"],
+    horizontal=True
+)
+
+df_articles = None
+
+if source_mode == "Connexion Odoo":
+    st.subheader("🔐 Connexion à Odoo")
+    
+    # Vérifier si on a des secrets configurés
+    try:
+        odoo_url = st.secrets.get("odoo", {}).get("url", "odoo.demainsupermarche.org")
+        odoo_port = st.secrets.get("odoo", {}).get("port", 443)
+        odoo_database = st.secrets.get("odoo", {}).get("database", "demain")
+        odoo_username = st.secrets.get("odoo", {}).get("username", "")
+        odoo_password = st.secrets.get("odoo", {}).get("password", "")
+        use_secrets = True
+    except:
+        # Valeurs par défaut si pas de secrets configurés
+        odoo_url = "odoo.demainsupermarche.org"
+        odoo_port = 443
+        odoo_database = "demain"
+        odoo_username = ""
+        odoo_password = ""
+        use_secrets = False
+    
+    # Afficher les champs de connexion
+    col1, col2 = st.columns(2)
+    with col1:
+        odoo_url = st.text_input("URL Odoo", value=odoo_url)
+        odoo_database = st.text_input("Base de données", value=odoo_database)
+        odoo_username = st.text_input("Nom d'utilisateur", value=odoo_username)
+    with col2:
+        odoo_port = st.number_input("Port", value=odoo_port, min_value=1, max_value=65535)
+        odoo_password = st.text_input("Mot de passe", type="password", value=odoo_password)
+    
+    if st.button("🔌 Se connecter et récupérer les articles", type="primary"):
+        with st.spinner("Connexion à Odoo et récupération des articles..."):
+            df_articles = get_odoo_articles(
+                odoo_connector,
+                odoo_url,
+                odoo_port,
+                odoo_database,
+                odoo_username,
+                odoo_password
+            )
+            
+            if df_articles is not None:
+                st.success(f"✅ {len(df_articles)} articles récupérés depuis Odoo")
+                st.session_state['df_articles'] = df_articles
+                st.session_state['articles_source'] = 'odoo'
+            else:
+                st.error("❌ Échec de la récupération des articles")
+    
+    # Afficher les articles si déjà récupérés
+    if 'df_articles' in st.session_state and st.session_state.get('articles_source') == 'odoo':
+        df_articles = st.session_state['df_articles']
+        with st.expander("📊 Aperçu des articles récupérés"):
+            st.dataframe(df_articles.head(10))
+            st.info(f"Total : {len(df_articles)} articles")
+
+else:  # Upload fichier CSV
+    st.subheader("📁 Upload du fichier product.product.csv")
+    st.info('Le fichier "product.product.csv" doit être téléchargé à partir d\'ODOO, module Inventaire -> Données de base -> Variantes d\'articles.')
+    
+    csv_file = st.file_uploader('Fichier "product.product.csv"', type=["csv"])
+    
+    if csv_file is not None:
+        try:
+            df_articles = pd.read_csv(csv_file)
+            st.success(f"✅ {len(df_articles)} articles chargés depuis le CSV")
+            st.session_state['df_articles'] = df_articles
+            st.session_state['articles_source'] = 'csv'
+            
+            with st.expander("📊 Aperçu du fichier CSV"):
+                st.dataframe(df_articles.head(10))
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la lecture du CSV : {str(e)}")
+
+# =============================================================================
+# Upload des autres fichiers
+# =============================================================================
+st.header("2. Import des autres fichiers")
+col1, col2 = st.columns(2)
 
 with col1:
     pdf_file = st.file_uploader("Facture au format PDF", type=["pdf"])
 
 with col2:
-    csv_file = st.file_uploader('Fichier "product.template.csv"', type=["csv"])
-
-with col3:
     excel_file = st.file_uploader('Fichier "Correspondance.xlsx"', type=["xlsx"])
 
 # =============================================================================
 # Traitement principal
 # =============================================================================
-def main_processing(pdf_file, csv_file, excel_file, ref_commande, id_fourni):
+def main_processing(pdf_file, df_articles, excel_file, ref_commande, id_fourni):
     """Fonction principale de traitement"""
     temp_pdf_path = None
     
@@ -97,7 +192,9 @@ def main_processing(pdf_file, csv_file, excel_file, ref_commande, id_fourni):
         
         # Fusion avec les articles
         with st.spinner("Fusion avec les articles..."):
-            df_processed, df_unlinked_rl, df_unlinked_od = data_processor.merge_with_articles(df_clean, csv_file, excel_file)
+            df_processed, df_unlinked_rl, df_unlinked_od = data_processor.merge_with_articles(
+                df_clean, df_articles, excel_file
+            )
         
         # Préparation du fichier d'import
         with st.spinner("Préparation du fichier d'import..."):
@@ -108,7 +205,7 @@ def main_processing(pdf_file, csv_file, excel_file, ref_commande, id_fourni):
     except Exception as e:
         import traceback
         st.error(f"Erreur lors du traitement : {str(e)}")
-        st.code(traceback.format_exc())  # Montre les détails de l'erreur
+        st.code(traceback.format_exc())
         return None, None, None, None, None
     
     finally:
@@ -118,16 +215,21 @@ def main_processing(pdf_file, csv_file, excel_file, ref_commande, id_fourni):
 
 # Bouton de traitement
 if st.button("Traiter les fichiers", type="primary"):
-    if pdf_file is not None and csv_file is not None and excel_file is not None:
+    # Vérifier que les articles sont disponibles
+    if 'df_articles' not in st.session_state or st.session_state['df_articles'] is None:
+        st.error("❌ Veuillez d'abord récupérer les articles (via Odoo ou CSV)")
+    elif pdf_file is None or excel_file is None:
+        st.warning("⚠️ Veuillez uploader le PDF et le fichier de correspondance")
+    else:
         df_processed, df_unlinked_rl, df_unlinked_od, df_import, pdf_name = main_processing(
-            pdf_file, csv_file, excel_file, ref_commande, id_fourni
+            pdf_file, st.session_state['df_articles'], excel_file, ref_commande, id_fourni
         )
         
         if df_processed is not None:
             st.success("Traitement terminé avec succès !")
             
             # Affichage des résultats
-            st.header("2. Résultats")
+            st.header("3. Résultats")
             tab1, tab2, tab3, tab4 = st.tabs(["Commandes traitées", "Articles non liés (RL)", "Articles non liés (ODOO)", "Fichier à importer"])
             
             with tab1:
@@ -156,7 +258,7 @@ if st.button("Traiter les fichiers", type="primary"):
                 st.dataframe(df_import)
             
             # Téléchargement des fichiers
-            st.header("3. Téléchargement des fichiers")
+            st.header("4. Téléchargement des fichiers")
             
             # Préparer les buffers pour les fichiers
             excel_buffer = file_exporter.export_to_excel(df_processed, df_unlinked_rl, df_unlinked_od)
@@ -203,8 +305,5 @@ if st.button("Traiter les fichiers", type="primary"):
                     file_name=f"export_complet_{pdf_name}.zip",
                     mime="application/zip"
                 )
-    
-    else:
-        st.warning("Veuillez importer les trois fichiers (PDF, CSV et Excel) avant de lancer le traitement.")
 
 warnings.filterwarnings('always')
