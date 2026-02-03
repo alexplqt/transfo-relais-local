@@ -50,6 +50,7 @@ class DataProcessor:
                 df[col]
                 .astype('string')
                 .str.replace(',', '.')
+                .replace('', '0')
                 .astype('float64')
             )
         
@@ -60,6 +61,7 @@ class DataProcessor:
             .str.replace('K', '')
             .str.replace('G virgule', '')
             .str.replace(',', '.')
+            .replace('', '0')
             .astype('float64')
         )
         
