@@ -24,43 +24,27 @@ class DataProcessor:
         Returns:
             pd.DataFrame: DataFrame nettoyé
         """
-        # Vérification des colonnes nécessaires
-        # Colonnes obligatoires (sans PU Brut, R.%, DESIGNATION et Nature qui peuvent être fusionnées)
-        excluding_cols = ['PU Brut', 'R.%', 'DESIGNATION', 'Nature']
-        required_cols = [col for col in self.config.PDF_COLUMNS if col not in excluding_cols]
-        missing_columns = [col for col in required_cols if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"Colonnes manquantes dans le PDF: {missing_columns}")
-        
-        # Vérifier que soit les colonnes séparées existent, soit les colonnes fusionnées existent
-        # Pour PU Brut et R.%
-        has_pu_separated = 'PU Brut' in df.columns and 'R.%' in df.columns
-        has_pu_fused = 'PU Brut R.%' in df.columns
-        if not (has_pu_separated or has_pu_fused):
-            raise ValueError("Colonnes manquantes: doit avoir ['PU Brut', 'R.%'] OU ['PU Brut R.%']")
-        
-        # Pour DESIGNATION et Nature
-        has_designation_separated = 'DESIGNATION' in df.columns and 'Nature' in df.columns
-        has_designation_fused = 'DESIGNATION Nature' in df.columns
-        if not (has_designation_separated or has_designation_fused):
-            raise ValueError("Colonnes manquantes: doit avoir ['DESIGNATION', 'Nature'] OU ['DESIGNATION Nature']")
-        
         # Retirer les lignes sans référence produit
         df_clean = df[~df['REF.'].isna()].copy()
 
         # Si les colonnes PU Brut et R.% ont fusionné, on les sépare
-        if 'PU Brut R.%' in df.columns :
-            df['PU Brut'] = df['PU Brut R.%'].str[:4]
-            df['R.%'] = df['PU Brut R.%'].str[4:]
+        if 'PU Brut R.%' in df_clean.columns:
+            df_clean['PU Brut'] = df_clean['PU Brut R.%'].str[:4]
+            df_clean['R.%'] = df_clean['PU Brut R.%'].str[4:]
 
         # Même problème pour DESIGNATION et Nature
-        if 'DESIGNATION Nature' in df.columns :
+        if 'DESIGNATION Nature' in df_clean.columns:
             # Liste des mots avec lequel on va split (on doit passer par là car ici la longueur des variables n'est pas fixe)
             mot_split = ['BIO', 'NATURE & PNROUGSR ELSE SAVONS (38)']
             pattern = '|'.join(map(re.escape, mot_split))
-            df[['DESIGNATION', 'Nature']] = df['DESIGNATION Nature'].str.split(pattern, n=1, expand=True)
-            df['DESIGNATION'] = df['DESIGNATION'].str.strip()
-            df['Nature'] = df['Nature'].str.strip()
+            df_clean[['DESIGNATION', 'Nature']] = df_clean['DESIGNATION Nature'].str.split(pattern, n=1, expand=True)
+            df_clean['DESIGNATION'] = df_clean['DESIGNATION'].str.strip()
+            df_clean['Nature'] = df_clean['Nature'].str.strip()
+        
+        # Vérification des colonnes nécessaires (après le traitement des colonnes fusionnées)
+        missing_columns = [col for col in self.config.PDF_COLUMNS if col not in df_clean.columns]
+        if missing_columns:
+            raise ValueError(f"Colonnes manquantes dans le PDF: {missing_columns}")
         
         # Conserver uniquement les colonnes intéressantes
         df_clean = df_clean[self.config.PDF_COLUMNS]
