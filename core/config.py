@@ -9,7 +9,7 @@ class Config:
     ENCODING = 'ISO-8859-1'
     
     # Colonnes attendues dans le PDF
-    PDF_COLUMNS = ['REF.', 'DESIGNATION', 'QTE', 'UV', 'PU Brut', 'R.%', 'PU Net', 'Montant HT']
+    PDF_COLUMNS = ['REF.', 'DESIGNATION', 'Nature', 'QTE', 'UV', 'PU Brut', 'R.%', 'PU Net', 'Montant HT']
     FLOAT_COLUMNS = ['PU Brut', 'R.%', 'PU Net', 'Montant HT']
     
     # Colonnes pour l'export

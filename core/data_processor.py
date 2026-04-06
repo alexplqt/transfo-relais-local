@@ -25,9 +25,25 @@ class DataProcessor:
             pd.DataFrame: DataFrame nettoyé
         """
         # Vérification des colonnes nécessaires
-        missing_columns = [col for col in self.config.PDF_COLUMNS if col not in df.columns]
+        # Colonnes obligatoires (sans PU Brut, R.%, DESIGNATION et Nature qui peuvent être fusionnées)
+        excluding_cols = ['PU Brut', 'R.%', 'DESIGNATION', 'Nature']
+        required_cols = [col for col in self.config.PDF_COLUMNS if col not in excluding_cols]
+        missing_columns = [col for col in required_cols if col not in df.columns]
         if missing_columns:
             raise ValueError(f"Colonnes manquantes dans le PDF: {missing_columns}")
+        
+        # Vérifier que soit les colonnes séparées existent, soit les colonnes fusionnées existent
+        # Pour PU Brut et R.%
+        has_pu_separated = 'PU Brut' in df.columns and 'R.%' in df.columns
+        has_pu_fused = 'PU Brut R.%' in df.columns
+        if not (has_pu_separated or has_pu_fused):
+            raise ValueError("Colonnes manquantes: doit avoir ['PU Brut', 'R.%'] OU ['PU Brut R.%']")
+        
+        # Pour DESIGNATION et Nature
+        has_designation_separated = 'DESIGNATION' in df.columns and 'Nature' in df.columns
+        has_designation_fused = 'DESIGNATION Nature' in df.columns
+        if not (has_designation_separated or has_designation_fused):
+            raise ValueError("Colonnes manquantes: doit avoir ['DESIGNATION', 'Nature'] OU ['DESIGNATION Nature']")
         
         # Retirer les lignes sans référence produit
         df_clean = df[~df['REF.'].isna()].copy()
