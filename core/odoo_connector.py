@@ -244,6 +244,10 @@ class OdooConnector:
         
         df_articles = df_articles[columns_to_keep]
         
+        # DEBUG - Export temporaire
+        df_articles.to_csv('debug_articles_odoo.csv', index=False, encoding='utf-8-sig')
+        print(f"✅ Articles exportés dans debug_articles_odoo.csv")
+
         return df_articles
     
     def disconnect(self):
