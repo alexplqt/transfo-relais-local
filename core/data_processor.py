@@ -33,7 +33,7 @@ class DataProcessor:
             df_clean['R.%'] = df_clean['PU Brut R.%'].str[4:]
 
         # Même problème pour DESIGNATION et Nature
-        if 'DESIGNATION Nature' in df_clean.columns:
+        if 'DESIGNATION Nature' in df.columns and 'DESIGNATION' not in df.columns:
             # Liste des mots avec lequel on va split (on doit passer par là car ici la longueur des variables n'est pas fixe)
             mot_split = ['BIO', 'NATURE & PNROUGSR ELSE SAVONS (38)']
             pattern = '|'.join(map(re.escape, mot_split))
