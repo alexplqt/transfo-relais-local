@@ -17,23 +17,43 @@ class DataProcessor:
     def _handle_merged_designation_nature(self, df):
         """
         Traite la fusion des colonnes 'DESIGNATION' et 'Nature' dans un DataFrame
-        Cette méthode doit être appelée AVANT la concaténation des DataFrames de différentes pages
+        Gère deux scénarios :
+        1. Colonnes fusionnées avec séparateur (longues chaînes)
+        2. DESIGNATION dans Unnamed:0, Nature dans DESIGNATION Nature (courtes chaînes)
         
         Args:
             df (pd.DataFrame): DataFrame à traiter
             
         Returns:
-            pd.DataFrame: DataFrame avec colonnes séparées si fusion détectée
+            pd.DataFrame: DataFrame avec colonnes séparées correctement
         """
-        # Même problème pour DESIGNATION et Nature
-        if 'DESIGNATION Nature' in df.columns and 'DESIGNATION' not in df.columns:
-            # Liste des mots avec lequel on va split (on doit passer par là car ici la longueur des variables n'est pas fixe)
-            mot_split = ['BIO', 'NATURE & PNROUGSR ELSE SAVONS (38)']
-            pattern = '|'.join(map(re.escape, mot_split))
-            df[['DESIGNATION', 'Nature']] = df['DESIGNATION Nature'].str.split(pattern, n=1, expand=True)
-            df['DESIGNATION'] = df['DESIGNATION'].str.strip()
-            df['Nature'] = df['Nature'].str.strip()
-            df = df.drop('DESIGNATION Nature', axis=1)
+        # Vérifier si DESIGNATION Nature existe
+        if 'DESIGNATION Nature' in df.columns:
+            # Calculer la longueur moyenne des chaînes dans DESIGNATION Nature
+            avg_length = df['DESIGNATION Nature'].astype(str).str.len().mean()
+            
+            if avg_length > 5:
+                # SCÉNARIO 1: Colonnes fusionnées avec séparateur (traitement classique)
+                mot_split = ['BIO', 'NATURE & PNROUGSR ELSE SAVONS (38)']
+                pattern = '|'.join(map(re.escape, mot_split))
+                
+                df[['DESIGNATION', 'Nature']] = df['DESIGNATION Nature'].str.split(pattern, n=1, expand=True)
+                df['DESIGNATION'] = df['DESIGNATION'].str.strip()
+                df['Nature'] = df['Nature'].str.strip()
+                df = df.drop('DESIGNATION Nature', axis=1)
+                
+            else:
+                # SCÉNARIO 2: DESIGNATION dans Unnamed:0, Nature dans DESIGNATION Nature
+                if 'Unnamed: 0' in df.columns:
+                    # Copier Unnamed:0 vers DESIGNATION
+                    df['DESIGNATION'] = df['Unnamed: 0'].astype(str).str.strip()
+                    df['Nature'] = df['DESIGNATION Nature'].astype(str).str.strip()
+                    df = df.drop(['DESIGNATION Nature', 'Unnamed: 0'], axis=1)
+        
+        elif 'DESIGNATION' not in df.columns and 'Unnamed: 0' in df.columns:
+            # Cas où DESIGNATION est manquante mais Unnamed:0 existe
+            df['DESIGNATION'] = df['Unnamed: 0'].astype(str).str.strip()
+            df = df.drop('Unnamed: 0', axis=1)
         
         return df
     
