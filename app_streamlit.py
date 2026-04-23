@@ -180,11 +180,15 @@ def main_processing(pdf_file, df_articles, excel_file, ref_commande, id_fourni):
         # Extraction des tableaux du PDF
         with st.spinner("Extraction des tableaux du PDF..."):
             try:
-                df_raw = pdf_processor.extract_tables_from_pdf(temp_pdf_path)
+                df_list = pdf_processor.extract_tables_from_pdf(temp_pdf_path)
                 st.success("✅ Extraction PDF terminée")
             except Exception as e:
                 st.error(f"❌ Échec de l'extraction PDF: {str(e)}")
                 return None, None, None, None, None
+        
+        # Concaténation et normalisation des DataFrames (traitement des colonnes fusionnées)
+        with st.spinner("Normalisation et concaténation des données..."):
+            df_raw = data_processor.concatenate_dataframes(df_list)
                 
         # Nettoyage des données
         with st.spinner("Nettoyage des données..."):

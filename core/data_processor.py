@@ -14,9 +14,53 @@ class DataProcessor:
     def __init__(self):
         self.config = Config()
     
+    def _handle_merged_designation_nature(self, df):
+        """
+        Traite la fusion des colonnes 'DESIGNATION' et 'Nature' dans un DataFrame
+        Cette méthode doit être appelée AVANT la concaténation des DataFrames de différentes pages
+        
+        Args:
+            df (pd.DataFrame): DataFrame à traiter
+            
+        Returns:
+            pd.DataFrame: DataFrame avec colonnes séparées si fusion détectée
+        """
+        # Même problème pour DESIGNATION et Nature
+        if 'DESIGNATION Nature' in df.columns and 'DESIGNATION' not in df.columns:
+            # Liste des mots avec lequel on va split (on doit passer par là car ici la longueur des variables n'est pas fixe)
+            mot_split = ['BIO', 'NATURE & PNROUGSR ELSE SAVONS (38)']
+            pattern = '|'.join(map(re.escape, mot_split))
+            df[['DESIGNATION', 'Nature']] = df['DESIGNATION Nature'].str.split(pattern, n=1, expand=True)
+            df['DESIGNATION'] = df['DESIGNATION'].str.strip()
+            df['Nature'] = df['Nature'].str.strip()
+            df = df.drop('DESIGNATION Nature', axis=1)
+        
+        return df
+    
+    def concatenate_dataframes(self, df_list):
+        """
+        Concatène une liste de DataFrames en normalisant d'abord chacun
+        Traite notamment la fusion des colonnes 'DESIGNATION Nature' sur chaque page
+        
+        Args:
+            df_list (list): Liste de DataFrames extraits des différentes pages
+            
+        Returns:
+            pd.DataFrame: DataFrame concaténé avec colonnes normalisées
+        """
+        # Traiter chaque DataFrame avant la concaténation
+        df_normalized_list = [self._handle_merged_designation_nature(df) for df in df_list]
+        
+        # Concaténer tous les DataFrames
+        df_concatenated = pd.concat(df_normalized_list, ignore_index=True)
+        
+        return df_concatenated
+    
     def clean_dataframe(self, df):
         """
         Nettoie et transforme le DataFrame extrait du PDF
+        Note: Les colonnes fusionnées (DESIGNATION Nature) doivent être traitées AVANT
+        (voir concatenate_dataframes)
         
         Args:
             df (pd.DataFrame): DataFrame brut extrait du PDF
@@ -32,15 +76,6 @@ class DataProcessor:
             df_clean['PU Brut'] = df_clean['PU Brut R.%'].str[:4]
             df_clean['R.%'] = df_clean['PU Brut R.%'].str[4:]
 
-        # Même problème pour DESIGNATION et Nature
-        if 'DESIGNATION Nature' in df.columns and 'DESIGNATION' not in df.columns:
-            # Liste des mots avec lequel on va split (on doit passer par là car ici la longueur des variables n'est pas fixe)
-            mot_split = ['BIO', 'NATURE & PNROUGSR ELSE SAVONS (38)']
-            pattern = '|'.join(map(re.escape, mot_split))
-            df_clean[['DESIGNATION', 'Nature']] = df_clean['DESIGNATION Nature'].str.split(pattern, n=1, expand=True)
-            df_clean['DESIGNATION'] = df_clean['DESIGNATION'].str.strip()
-            df_clean['Nature'] = df_clean['Nature'].str.strip()
-        
         # Vérification des colonnes nécessaires (après le traitement des colonnes fusionnées)
         missing_columns = [col for col in self.config.PDF_COLUMNS if col not in df_clean.columns]
         if missing_columns:

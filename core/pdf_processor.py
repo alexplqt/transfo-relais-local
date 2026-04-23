@@ -14,7 +14,8 @@ class PDFProcessor:
     
     def extract_tables_from_pdf(self, pdf_path):
         """
-        Extrait les tableaux d'un fichier PDF
+        Extrait les tableaux d'un fichier PDF et retourne une liste de DataFrames bruts
+        (sans concaténation pour permettre le traitement individualisé)
         """
         # Ouverture du PDF pour connaître le nombre de pages
         pdf_document = fitz.open(pdf_path)
@@ -37,5 +38,5 @@ class PDFProcessor:
         if not df_list:
             raise ValueError("Aucun deuxième tableau trouvé dans le PDF")
         
-        # Concaténer tous les DataFrames de la liste en un seul DataFrame
-        return pd.concat(df_list, ignore_index=True)
+        # Retourner la liste des DataFrames bruts (concaténation et traitement dans DataProcessor)
+        return df_list
