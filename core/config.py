@@ -4,9 +4,9 @@ Configuration de l'application
 
 class Config:
     """Paramètres de configuration par défaut"""
-    REF_COMMANDE_DEFAULT = "A définir"
+    REF_COMMANDE_DEFAULT = "A définir (si import manuel)"
     ID_FOURNI_DEFAULT = "__export__.res_partner_244_9deb6d8b"
-    ENCODING = 'ISO-8859-1'
+    ENCODING = 'utf-8-sig'
     
     # Colonnes attendues dans le PDF
     PDF_COLUMNS = ['REF.', 'DESIGNATION', 'Nature', 'QTE', 'UV', 'PU Brut', 'R.%', 'PU Net', 'Montant HT']

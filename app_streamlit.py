@@ -126,6 +126,13 @@ if source_mode == "Connexion Odoo":
                 st.success(f"✅ {len(df_articles)} articles récupérés depuis Odoo")
                 st.session_state['df_articles'] = df_articles
                 st.session_state['articles_source'] = 'odoo'
+                st.session_state['odoo_connection'] = {
+                    'url': odoo_url,
+                    'port': odoo_port,
+                    'database': odoo_database,
+                    'username': odoo_username,
+                    'password': odoo_password,
+                }
             else:
                 st.error("❌ Échec de la récupération des articles")
     
@@ -228,86 +235,230 @@ if st.button("Traiter les fichiers", type="primary"):
         df_processed, df_unlinked_rl, df_unlinked_od, df_import, pdf_name = main_processing(
             pdf_file, st.session_state['df_articles'], excel_file, ref_commande, id_fourni
         )
-        
+
         if df_processed is not None:
+            st.session_state['processing_results'] = {
+                'df_processed': df_processed,
+                'df_unlinked_rl': df_unlinked_rl,
+                'df_unlinked_od': df_unlinked_od,
+                'df_import': df_import,
+                'pdf_name': pdf_name,
+                'ref_commande': ref_commande,
+                'id_fourni': id_fourni,
+            }
             st.success("Traitement terminé avec succès !")
-            
-            # Affichage des résultats
-            st.header("3. Résultats")
-            tab1, tab2, tab3, tab4 = st.tabs(["Commandes traitées", "Articles non liés (RL)", "Articles non liés (ODOO)", "Fichier à importer"])
-            
-            with tab1:
-                st.subheader("Commandes traitées")
-                st.dataframe(df_processed)
-                st.write(f"Nombre d'articles traités : {len(df_processed)}")
-            
-            with tab2:
-                st.subheader("Articles non liés (RL)")
-                if not df_unlinked_rl.empty:
-                    st.dataframe(df_unlinked_rl)
-                    st.write(f"Nombre d'articles non liés RL : {len(df_unlinked_rl)}")
-                else:
-                    st.success("Aucun article non lié RL !")
-            
-            with tab3:
-                st.subheader("Articles non liés (ODOO)")
-                if not df_unlinked_od.empty:
-                    st.dataframe(df_unlinked_od)
-                    st.write(f"Nombre d'articles non liés ODOO : {len(df_unlinked_od)}")
-                else:
-                    st.success("Aucun article non lié ODOO !")
-            
-            with tab4:
-                st.subheader("Fichier à importer")
-                st.dataframe(df_import)
-            
-            # Téléchargement des fichiers
-            st.header("4. Téléchargement des fichiers")
-            
-            # Préparer les buffers pour les fichiers
-            excel_buffer = file_exporter.export_to_excel(df_processed, df_unlinked_rl, df_unlinked_od)
-            csv_buffer = file_exporter.export_to_csv(df_import)
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.download_button(
-                    label="📥 Télécharger le fichier Excel",
-                    data=excel_buffer,
-                    file_name=f"commandes_traitee_{pdf_name}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+if 'processing_results' in st.session_state:
+    results = st.session_state['processing_results']
+    df_processed = results['df_processed']
+    df_unlinked_rl = results['df_unlinked_rl']
+    df_unlinked_od = results['df_unlinked_od']
+    df_import = results['df_import']
+    pdf_name = results['pdf_name']
+
+    # Affichage des résultats
+    st.header("3. Résultats")
+    tab1, tab2, tab3, tab4 = st.tabs(["Commandes traitées", "Articles non liés (RL)", "Articles non liés (ODOO)", "Fichier à importer"])
+
+    with tab1:
+        st.subheader("Commandes traitées")
+        st.dataframe(df_processed)
+        st.write(f"Nombre d'articles traités : {len(df_processed)}")
+
+    with tab2:
+        st.subheader("Articles non liés (RL)")
+        if not df_unlinked_rl.empty:
+            st.dataframe(df_unlinked_rl)
+            st.write(f"Nombre d'articles non liés RL : {len(df_unlinked_rl)}")
+        else:
+            st.success("Aucun article non lié RL !")
+
+    with tab3:
+        st.subheader("Articles non liés (ODOO)")
+        if not df_unlinked_od.empty:
+            st.dataframe(df_unlinked_od)
+            st.write(f"Nombre d'articles non liés ODOO : {len(df_unlinked_od)}")
+        else:
+            st.success("Aucun article non lié ODOO !")
+
+    with tab4:
+        st.subheader("Fichier à importer")
+        st.dataframe(df_import)
+
+    # Création directe dans Odoo
+    st.header("4. Création dans Odoo")
+    can_create_in_odoo = st.session_state.get('articles_source') == 'odoo'
+    has_odoo_ids = 'Article ID Odoo' in df_processed.columns and df_processed['Article ID Odoo'].notna().all()
+
+    if not can_create_in_odoo:
+        st.info("La création directe est disponible après une récupération des articles via Connexion Odoo.")
+    elif not has_odoo_ids:
+        st.warning("Certains articles n'ont pas d'ID interne Odoo. Relancez la récupération des articles via Connexion Odoo.")
+    else:
+        if not df_unlinked_rl.empty or not df_unlinked_od.empty:
+            st.warning("Des articles non liés existent. La demande de prix ne contiendra que les articles traités.")
+
+        confirm_create = st.checkbox("Je confirme vouloir créer cette demande de prix dans Odoo")
+        if st.button("Créer la demande de prix dans Odoo", disabled=not confirm_create):
+            connection = st.session_state.get('odoo_connection')
+            try:
+                if not connection:
+                    raise ValueError("Connexion Odoo introuvable. Reconnectez-vous à Odoo puis relancez le traitement.")
+                if not odoo_connector.connected:
+                    odoo_connector.connect(**connection)
+
+                order = odoo_connector.create_purchase_order(
+                    df_processed,
+                    results['ref_commande'],
+                    results['id_fourni'],
                 )
-            
-            with col2:
-                st.download_button(
-                    label="📥 Télécharger le fichier CSV",
-                    data=csv_buffer,
-                    file_name=f"a_importer_{pdf_name}.csv",
-                    mime="text/csv"
+                st.success(
+                    f"Demande de prix {order['name']} créée dans Odoo "
+                    f"pour {order['partner_name']} "
+                    f"avec {order['line_count']} lignes."
                 )
-            
-            with col3:
-                # Créer un fichier ZIP contenant les deux fichiers
-                import zipfile
-                from io import BytesIO
-                
-                zip_buffer = BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-                    # Ajouter le fichier Excel
-                    excel_buffer.seek(0)
-                    zip_file.writestr(f"commandes_traitee_{pdf_name}.xlsx", excel_buffer.read())
-                    
-                    # Ajouter le fichier CSV
-                    csv_buffer.seek(0)
-                    zip_file.writestr(f"a_importer_{pdf_name}.csv", csv_buffer.read())
-                
-                zip_buffer.seek(0)
-                
-                st.download_button(
-                    label="📦 Télécharger les deux fichiers (ZIP)",
-                    data=zip_buffer,
-                    file_name=f"export_complet_{pdf_name}.zip",
-                    mime="application/zip"
+            except Exception as e:
+                import traceback
+                st.error(f"Échec de la création dans Odoo : {str(e)}")
+                st.code(traceback.format_exc())
+
+    # Téléchargement des fichiers
+    st.header("5. Téléchargement des fichiers")
+
+    # Préparer les buffers pour les fichiers
+    excel_buffer = file_exporter.export_to_excel(df_processed, df_unlinked_rl, df_unlinked_od)
+    csv_buffer = file_exporter.export_to_csv(df_import)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.download_button(
+            label="📥 Télécharger le fichier Excel",
+            data=excel_buffer,
+            file_name=f"commandes_traitee_{pdf_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    with col2:
+        st.download_button(
+            label="📥 Télécharger le fichier CSV",
+            data=csv_buffer,
+            file_name=f"a_importer_{pdf_name}.csv",
+            mime="text/csv"
+        )
+
+    with col3:
+        # Créer un fichier ZIP contenant les deux fichiers
+        import zipfile
+        from io import BytesIO
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+            # Ajouter le fichier Excel
+            excel_buffer.seek(0)
+            zip_file.writestr(f"commandes_traitee_{pdf_name}.xlsx", excel_buffer.read())
+
+            # Ajouter le fichier CSV
+            csv_buffer.seek(0)
+            zip_file.writestr(f"a_importer_{pdf_name}.csv", csv_buffer.read())
+
+        zip_buffer.seek(0)
+
+        st.download_button(
+            label="📦 Télécharger les deux fichiers (ZIP)",
+            data=zip_buffer,
+            file_name=f"export_complet_{pdf_name}.zip",
+            mime="application/zip"
+        )
+
+    # Mise à jour des prix
+    st.header("6. Mise à jour des prix Odoo")
+    if not can_create_in_odoo:
+        st.info("La mise à jour directe des prix est disponible après une récupération des articles via Connexion Odoo.")
+    elif not has_odoo_ids:
+        st.warning("Certains articles n'ont pas d'ID interne Odoo. Relancez la récupération des articles via Connexion Odoo.")
+    else:
+        col_inf, col_sup = st.columns(2)
+        with col_inf:
+            lower_bound = st.number_input(
+                "Borne basse d'écart fournisseur",
+                value=-0.10,
+                step=0.01,
+                format="%.2f",
+            )
+        with col_sup:
+            upper_bound = st.number_input(
+                "Borne haute d'écart fournisseur",
+                value=0.05,
+                step=0.01,
+                format="%.2f",
+            )
+
+        if st.button("Prévisualiser les mises à jour de prix"):
+            connection = st.session_state.get('odoo_connection')
+            try:
+                if not connection:
+                    raise ValueError("Connexion Odoo introuvable. Reconnectez-vous à Odoo puis relancez le traitement.")
+                if not odoo_connector.connected:
+                    odoo_connector.connect(**connection)
+
+                st.session_state['price_update_preview'] = odoo_connector.build_price_update_preview(
+                    df_processed,
+                    results['id_fourni'],
+                    lower_bound,
+                    upper_bound,
                 )
+            except Exception as e:
+                import traceback
+                st.error(f"Échec de la prévisualisation des prix : {str(e)}")
+                st.code(traceback.format_exc())
+
+        if 'price_update_preview' in st.session_state:
+            price_preview = st.session_state['price_update_preview']
+            rows_to_update = price_preview[price_preview['A modifier'] == True]
+            rows_not_updated = price_preview[price_preview['A modifier'] != True]
+
+            st.write(f"Articles à mettre à jour : {len(rows_to_update)} / {len(price_preview)}")
+            tab_update, tab_no_update = st.tabs([
+                "Prix mis à jour",
+                "Prix non modifiés",
+            ])
+            with tab_update:
+                st.dataframe(rows_to_update)
+            with tab_no_update:
+                st.dataframe(rows_not_updated)
+
+            blocking_rows = price_preview[
+                price_preview[['SupplierInfo ID', 'Nouveau prix de vente']].isna().any(axis=1)
+            ]
+            if not blocking_rows.empty:
+                st.warning(
+                    "Certaines lignes ne peuvent pas être mises à jour automatiquement "
+                    "(fournisseur, catégorie de marge ou taxe manquante)."
+                )
+
+            confirm_price_update = st.checkbox("Je confirme vouloir mettre à jour ces prix dans Odoo")
+            if st.button(
+                "Mettre à jour les prix dans Odoo",
+                disabled=not confirm_price_update or rows_to_update.empty,
+            ):
+                connection = st.session_state.get('odoo_connection')
+                try:
+                    if not connection:
+                        raise ValueError("Connexion Odoo introuvable. Reconnectez-vous à Odoo puis relancez le traitement.")
+                    if not odoo_connector.connected:
+                        odoo_connector.connect(**connection)
+
+                    update_result = odoo_connector.update_prices_from_preview(price_preview)
+                    st.success(
+                        f"Mise à jour terminée : {update_result['success']} réussies, "
+                        f"{update_result['errors']} erreurs."
+                    )
+                    if update_result['details']:
+                        st.dataframe(pd.DataFrame(update_result['details']))
+                except Exception as e:
+                    import traceback
+                    st.error(f"Échec de la mise à jour des prix : {str(e)}")
+                    st.code(traceback.format_exc())
 
 warnings.filterwarnings('always')

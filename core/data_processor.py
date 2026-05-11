@@ -55,6 +55,10 @@ class DataProcessor:
             df['DESIGNATION'] = df['Unnamed: 0'].astype(str).str.strip()
             df = df.drop('Unnamed: 0', axis=1)
         
+        # Assurer que la colonne 'Nature' existe
+        if 'Nature' not in df.columns:
+            df['Nature'] = ''
+        
         return df
     
     def concatenate_dataframes(self, df_list):
@@ -119,8 +123,9 @@ class DataProcessor:
             df[col] = (
                 df[col]
                 .astype('string')
-                .str.replace(',', '.')
+                .str.replace(',', '.', regex=False)
                 .replace('', '0')
+                .fillna('0')
                 .astype('float64')
             )
         
@@ -128,26 +133,23 @@ class DataProcessor:
         df['QTE'] = (
             df['QTE']
             .astype('string')
-            .str.replace('K', '')
-            .str.replace('G virgule', '')
-            .str.replace(',', '.')
+            .str.replace('K', '', regex=False)
+            .str.replace('G virgule', '', regex=False)
+            .str.replace(',', '.', regex=False)
             .replace('', '0')
+            .fillna('0')
             .astype('float64')
         )
         
         # Traitement de la référence
-        df['REF.'] = df['REF.'].astype('string').str.replace('.0', '')
-
-        # DEBUG - Export temporaire
-        df.to_csv('debug_facture.csv', index=False, encoding='utf-8-sig')
-        print(f"✅ Facture exportée dans debug_facture.csv")
+        df['REF.'] = df['REF.'].astype('string').str.replace('.0', '', regex=False)
         
         return df
     
     def _recalculate_quantity(self, df):
         """Recalcule la quantité si nécessaire"""
         df['QTE 2'] = df['Montant HT'] / df['PU Net']
-        df.loc[df['QTE'] != df['QTE 2'], 'QTE'] = df['QTE 2']
+        df.loc[(df['PU Net'] != 0) & (df['QTE'] != df['QTE 2']), 'QTE'] = df['QTE 2']
         return df.drop('QTE 2', axis=1)
     
     def merge_with_articles(self, df, articles_data, correspondance_excel):
@@ -201,8 +203,22 @@ class DataProcessor:
         )
         
         # Deuxième merge avec les articles ODOO
+        article_columns = [
+            'Article/ID',
+            'Nom',
+            'Fournisseurs/Unité de mesure/Nom affiché',
+            'Taxes fournisseur/ID',
+        ]
+        for optional_column in [
+            'Article ID Odoo',
+            'Fournisseurs/Unité de mesure/ID Odoo',
+            'Taxes fournisseur/ID Odoo',
+        ]:
+            if optional_column in art.columns:
+                article_columns.append(optional_column)
+
         df_merged = df_merged.merge(
-            art[['Article/ID', 'Nom', 'Fournisseurs/Unité de mesure/Nom affiché', 'Taxes fournisseur/ID']],
+            art[article_columns],
             how='left',
             left_on='Nom ODOO',
             right_on='Nom',
