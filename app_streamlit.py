@@ -395,14 +395,14 @@ if 'processing_results' in st.session_state:
         col_inf, col_sup = st.columns(2)
         with col_inf:
             lower_bound = st.number_input(
-                "Borne basse d'écart fournisseur",
+                "Borne basse d'écart prix de vente",
                 value=-0.10,
                 step=0.01,
                 format="%.2f",
             )
         with col_sup:
             upper_bound = st.number_input(
-                "Borne haute d'écart fournisseur",
+                "Borne haute d'écart prix de vente",
                 value=0.05,
                 step=0.01,
                 format="%.2f",

@@ -151,13 +151,16 @@ class OdooConnector:
         preview['Ecart prix fournisseur'] = (
             preview['Nouveau prix fournisseur'] - preview['Prix fournisseur origine'].fillna(0).astype(float)
         )
+        preview['Ecart prix de vente'] = (
+            preview['Nouveau prix de vente'] - preview['Prix vente origine'].fillna(0).astype(float)
+        )
         preview['Remise temporaire'] = preview['R.%'].apply(self._has_temporary_discount)
         preview['A modifier'] = (
-            (preview['Ecart prix fournisseur'] < lower_bound)
-            | (preview['Ecart prix fournisseur'] > upper_bound)
+            (preview['Ecart prix de vente'] < lower_bound)
+            | (preview['Ecart prix de vente'] > upper_bound)
         )
         preview.loc[
-            (preview['Ecart prix fournisseur'] < lower_bound)
+            (preview['Ecart prix de vente'] < lower_bound)
             & (preview['Remise temporaire']),
             'A modifier'
         ] = False
@@ -180,6 +183,7 @@ class OdooConnector:
             'Prix vente origine',
             'Nouveau prix de vente',
             'Ecart prix fournisseur',
+            'Ecart prix de vente',
             'Remise temporaire',
             'Categorie marge',
             'Taxe vente montant',
