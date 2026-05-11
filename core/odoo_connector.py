@@ -417,13 +417,14 @@ class OdooConnector:
         SupplierInfo = self.odoo.env['product.supplierinfo']
         supplier_lines = SupplierInfo.search_read(
             [('product_tmpl_id', 'in', df_products['template_id'].dropna().unique().tolist()), ('name', '=', supplier_id)],
-            ['id', 'product_tmpl_id', 'price', 'product_uom'],
+            ['id', 'product_tmpl_id', 'product_id', 'price', 'product_uom'],
         )
         df_suppliers = pd.DataFrame(supplier_lines)
         if df_suppliers.empty:
-            df_suppliers = pd.DataFrame(columns=['SupplierInfo ID', 'template_id', 'Prix fournisseur origine', 'uom_id'])
+            df_suppliers = pd.DataFrame(columns=['SupplierInfo ID', 'id', 'template_id', 'Prix fournisseur origine', 'uom_id'])
         else:
             df_suppliers['template_id'] = df_suppliers['product_tmpl_id'].apply(self._many2one_id)
+            df_suppliers['supplier_product_id'] = df_suppliers['product_id'].apply(self._many2one_id)
             df_suppliers['uom_id'] = df_suppliers['product_uom'].apply(self._many2one_id)
             df_suppliers = df_suppliers.rename(
                 columns={
@@ -431,6 +432,7 @@ class OdooConnector:
                     'price': 'Prix fournisseur origine',
                 }
             )
+            df_suppliers = self._select_supplier_lines_for_products(df_products, df_suppliers)
 
         Tax = self.odoo.env['account.tax']
         tax_ids = df_products['tax_id'].dropna().unique().tolist()
@@ -449,8 +451,8 @@ class OdooConnector:
             df_uom = pd.DataFrame(columns=['id', 'Ratio unite fournisseur'])
 
         details = df_products.merge(
-            df_suppliers[['SupplierInfo ID', 'template_id', 'Prix fournisseur origine', 'uom_id']],
-            on='template_id',
+            df_suppliers[['SupplierInfo ID', 'id', 'Prix fournisseur origine', 'uom_id']],
+            on='id',
             how='left',
         )
         details = details.merge(
@@ -475,6 +477,47 @@ class OdooConnector:
                 'list_price': 'Prix vente origine',
             }
         )
+
+    def _select_supplier_lines_for_products(
+        self,
+        df_products: pd.DataFrame,
+        df_suppliers: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Choisit une seule ligne fournisseur par variante produit."""
+        selected_rows = []
+
+        for _, product in df_products[['id', 'template_id']].iterrows():
+            product_id = self._coerce_int(product['id'])
+            template_id = self._coerce_int(product['template_id'])
+            candidates = df_suppliers[df_suppliers['template_id'] == template_id].copy()
+
+            if candidates.empty:
+                selected_rows.append({
+                    'id': product_id,
+                    'SupplierInfo ID': None,
+                    'Prix fournisseur origine': None,
+                    'uom_id': None,
+                })
+                continue
+
+            variant_candidates = candidates[candidates['supplier_product_id'] == product_id]
+            generic_candidates = candidates[candidates['supplier_product_id'].isna()]
+
+            if not variant_candidates.empty:
+                selected = variant_candidates.sort_values('SupplierInfo ID').iloc[0]
+            elif not generic_candidates.empty:
+                selected = generic_candidates.sort_values('SupplierInfo ID').iloc[0]
+            else:
+                selected = candidates.sort_values('SupplierInfo ID').iloc[0]
+
+            selected_rows.append({
+                'id': product_id,
+                'SupplierInfo ID': selected['SupplierInfo ID'],
+                'Prix fournisseur origine': selected['Prix fournisseur origine'],
+                'uom_id': selected['uom_id'],
+            })
+
+        return pd.DataFrame(selected_rows)
 
     def _compute_sale_price(self, cost, tax_amount, margin_name):
         """Calcule le prix de vente a partir du cout, de la taxe et de la marge."""

@@ -237,6 +237,8 @@ if st.button("Traiter les fichiers", type="primary"):
         )
 
         if df_processed is not None:
+            st.session_state.pop('price_update_preview', None)
+            st.session_state.pop('created_purchase_order', None)
             st.session_state['processing_results'] = {
                 'df_processed': df_processed,
                 'df_unlinked_rl': df_unlinked_rl,
@@ -298,8 +300,19 @@ if 'processing_results' in st.session_state:
         if not df_unlinked_rl.empty or not df_unlinked_od.empty:
             st.warning("Des articles non liés existent. La demande de prix ne contiendra que les articles traités.")
 
+        created_order = st.session_state.get('created_purchase_order')
+        if created_order:
+            st.success(
+                f"Demande de prix {created_order['name']} déjà créée dans Odoo "
+                f"pour {created_order['partner_name']} "
+                f"avec {created_order['line_count']} lignes."
+            )
+
         confirm_create = st.checkbox("Je confirme vouloir créer cette demande de prix dans Odoo")
-        if st.button("Créer la demande de prix dans Odoo", disabled=not confirm_create):
+        if st.button(
+            "Créer la demande de prix dans Odoo",
+            disabled=not confirm_create or created_order is not None,
+        ):
             connection = st.session_state.get('odoo_connection')
             try:
                 if not connection:
@@ -312,6 +325,7 @@ if 'processing_results' in st.session_state:
                     results['ref_commande'],
                     results['id_fourni'],
                 )
+                st.session_state['created_purchase_order'] = order
                 st.success(
                     f"Demande de prix {order['name']} créée dans Odoo "
                     f"pour {order['partner_name']} "
